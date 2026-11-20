@@ -157,7 +157,12 @@ static void gfx_sdl_init(const char *window_title) {
 
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
     SDL_Init(SDL_INIT_VIDEO);
+#ifdef __SWITCH__
+    // text input brings up the on-screen keyboard here, only do that when an input box asks for it
+    SDL_StopTextInput();
+#else
     SDL_StartTextInput();
+#endif
 
     if (configWindow.msaa > 0) {
         SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);

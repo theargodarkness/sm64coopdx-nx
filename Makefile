@@ -816,7 +816,7 @@ ifeq ($(WINDOWS_BUILD),1)
     BACKEND_LDFLAGS += -ldbghelp
   endif
 else ifeq ($(TARGET_SWITCH),1)
-  NX_CFLAGS := $(NXARCH) -D__SWITCH__ -DTARGET_SWITCH -isystem $(LIBNX)/include -I$(PORTLIBS)/include -ftls-model=local-exec -ffunction-sections
+  NX_CFLAGS := $(NXARCH) -D__SWITCH__ -DTARGET_SWITCH -isystem $(LIBNX)/include -I$(PORTLIBS)/include -ftls-model=local-exec -ffunction-sections -fsigned-char
   CC_CHECK_CFLAGS := -fsyntax-only -fsigned-char $(NX_CFLAGS) $(BACKEND_CFLAGS) $(DEF_INC_CFLAGS) -Wall -Wextra $(TARGET_CFLAGS)
   CFLAGS := $(OPT_FLAGS) $(NX_CFLAGS) $(DEF_INC_CFLAGS) $(BACKEND_CFLAGS) $(TARGET_CFLAGS) -fno-strict-aliasing -fwrapv
 else ifeq ($(TARGET_N64),0) # Linux / Other builds below

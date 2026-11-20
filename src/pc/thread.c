@@ -38,6 +38,14 @@ int init_thread(struct ThreadHandle *handle, void *(*entry)(void *), void *arg, 
     err = pthread_attr_setdetachstate(&thattr, PTHREAD_CREATE_JOINABLE);
     assert(err == 0);
 
+#ifdef __SWITCH__
+    // The default thread stack is tiny on Switch (the loading thread sets up mods and Lua)
+    if (sp == NULL || sp_size == 0) {
+        err = pthread_attr_setstacksize(&thattr, 4 * 1024 * 1024);
+        assert(err == 0);
+    }
+#endif
+
     // Set the stack if we have one specified, Otherwise we don't care.
     // In truth, This honestly shouldn't be used on PC. But if somebody wants
     // a really managed stack? This is possible.
