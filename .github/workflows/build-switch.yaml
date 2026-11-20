@@ -1,0 +1,44 @@
+name: Build Switch
+
+on:
+    workflow_dispatch:
+    push:
+        branches: [ main, switch-port ]
+        paths-ignore: [ '**.md' ]
+    pull_request:
+        branches: [ main ]
+
+jobs:
+    build-switch:
+        runs-on: ubuntu-latest
+        container: devkitpro/devkita64:latest
+        steps:
+            - name: Install host tools
+              run: |
+                apt-get update
+                apt-get install -y --no-install-recommends build-essential python3 git curl ca-certificates zip bsdextrautils
+
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Show toolchain
+              run: |
+                "$DEVKITPRO/devkitA64/bin/aarch64-none-elf-gcc" --version | head -n 1 || true
+                dkp-pacman -Q | grep -E "^(libnx|switch-sdl2|switch-mesa|switch-zlib|devkitA64) " || true
+
+            - name: Build the game
+              run: make TARGET_SWITCH=1 -j$(nproc)
+
+            - name: Package for the SD card
+              run: |
+                mkdir -p dist/switch/sm64coopdx
+                cd build/us_nx
+                cp -r sm64coopdx.nro dynos lang mods palettes ../../dist/switch/sm64coopdx/
+                cd ../../dist
+                zip -r sm64coopdx_Switch.zip switch
+
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: sm64coopdx-switch
+                path: ./dist/sm64coopdx_Switch.zip

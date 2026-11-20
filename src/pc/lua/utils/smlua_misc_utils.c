@@ -682,6 +682,8 @@ const char* get_os_name(void) {
     return "Windows";
 #elif __APPLE__ || __MACH__
     return "Mac OSX"; // should be macOS
+#elif __SWITCH__
+    return "Nintendo Switch";
 #elif __linux__
     return "Linux";
 #elif __FreeBSD__

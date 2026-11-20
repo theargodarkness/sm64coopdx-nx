@@ -9,6 +9,7 @@
 #include "pc/utils/misc.h"
 #include "pc/cliopts.h"
 #include "rom_checker.h"
+#include "platform.h"
 
 extern ALIGNED8 u8 texture_coopdx_logo[];
 
@@ -187,7 +188,13 @@ void render_loading_screen(void) {
 void render_rom_setup_screen(void) {
     if (!sLoading) { init_loading_screen(); }
 
+#ifdef __SWITCH__
+    char text[256];
+    snprintf(text, sizeof(text), "No rom detected, copy Super Mario 64 (U) [!].z64 to sdmc:%s on your SD card and restart", sys_user_path());
+    loading_screen_set_segment_text(text);
+#else
     loading_screen_set_segment_text("No rom detected, drag & drop Super Mario 64 (U) [!].z64 on to this screen");
+#endif
 
     while (!gRomIsValid) {
         gWindowApi->main_loop(loading_screen_produce_one_frame);

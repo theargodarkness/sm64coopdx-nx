@@ -68,6 +68,10 @@
 #include <windows.h>
 #endif
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 #include <SDL2/SDL.h>
 
 extern Vp gViewportFullscreen;
@@ -464,6 +468,9 @@ void game_deinit(void) {
 void game_exit(void) {
     LOG_INFO("exiting cleanly");
     game_deinit();
+#ifdef __SWITCH__
+    socketExit();
+#endif
     exit(0);
 }
 
@@ -501,6 +508,14 @@ void* main_game_init(UNUSED void* dummy) {
 }
 
 int main(int argc, char *argv[]) {
+#ifdef __SWITCH__
+    // bring up the network stack, and send stdout to the PC when launched through nxlink
+    socketInitializeDefault();
+    nxlinkStdio();
+    // the homebrew loader passes the NRO path (and nothing useful) as arguments
+    if (argc > 1) { argc = 1; }
+#endif
+
     // handle terminal arguments
     if (!parse_cli_opts(argc, argv)) { return 0; }
 

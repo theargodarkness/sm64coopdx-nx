@@ -296,6 +296,34 @@ static void sys_fatal_impl(const char *msg) {
 
 #include <SDL2/SDL.h>
 
+#ifdef __SWITCH__
+#include <sys/stat.h>
+#include <switch.h>
+
+// libnx keeps the launch arguments around, argv[0] is the path of the NRO
+extern int __system_argc;
+extern char **__system_argv;
+
+#define SWITCH_DEFAULT_DIR "/switch/sm64coopdx"
+
+// Everything (save data, config, mods, ROM) lives next to the NRO on the SD card.
+// The "sdmc:" device prefix is dropped: the SD card is the default device and
+// a lot of path handling code does not expect a colon in the middle of a path.
+const char *sys_user_path(void) {
+    static char path[SYS_MAX_PATH] = { 0 };
+    if ('\0' != path[0]) { return path; }
+
+    const char *exeDir = sys_exe_path_dir();
+    snprintf(path, SYS_MAX_PATH, "%s", ('\0' != exeDir[0]) ? exeDir : SWITCH_DEFAULT_DIR);
+    if (!fs_sys_dir_exists(path)) {
+        mkdir("/switch", 0777);
+        mkdir(path, 0777);
+    }
+    return path;
+}
+
+#else
+
 const char *sys_user_path(void) {
     static char path[SYS_MAX_PATH] = { 0 };
     if ('\0' != path[0]) { return path; }
@@ -328,6 +356,8 @@ const char *sys_user_path(void) {
 
     return path;
 }
+
+#endif // __SWITCH__
 
 const char *sys_resource_path(void)
 {
@@ -366,7 +396,21 @@ const char *sys_exe_path_file(void) {
     static char path[SYS_MAX_PATH];
     if ('\0' != path[0]) { return path; }
 
-#if defined(__APPLE__)
+#if defined(__SWITCH__)
+    const char *arg0 = (__system_argc > 0 && __system_argv != NULL) ? __system_argv[0] : NULL;
+    if (arg0 != NULL) {
+        // "sdmc:/switch/sm64coopdx/sm64coopdx.nro" -> "/switch/sm64coopdx/sm64coopdx.nro"
+        const char *colon = strchr(arg0, ':');
+        if (colon != NULL) { arg0 = colon + 1; }
+    }
+    if (arg0 == NULL || arg0[0] != '/' || strrchr(arg0, '/') == arg0) {
+        // not launched from a folder on the SD card (e.g. nxlink), use the default one
+        arg0 = SWITCH_DEFAULT_DIR "/sm64coopdx.nro";
+    }
+    snprintf(path, SYS_MAX_PATH, "%s", arg0);
+    int res = strlen(path);
+
+#elif defined(__APPLE__)
     uint32_t bufsize = SYS_MAX_PATH;
     int res = _NSGetExecutablePath(path, &bufsize);
 
@@ -384,7 +428,15 @@ const char *sys_exe_path_file(void) {
 }
 
 static void sys_fatal_impl(const char *msg) {
+#ifdef __SWITCH__
+    // show the system error dialog, there is no message box support in SDL here
+    ErrorApplicationConfig c;
+    if (R_SUCCEEDED(errorApplicationCreate(&c, "sm64coopdx: fatal error", msg))) {
+        errorApplicationShow(&c);
+    }
+#else
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR , "Fatal error", msg, NULL);
+#endif
     fprintf(stderr, "FATAL ERROR:\n%s\n", msg);
     fflush(stderr);
     exit(1);

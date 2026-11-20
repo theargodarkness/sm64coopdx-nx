@@ -15,6 +15,8 @@
 
 #ifdef _WIN32
 	#include <windows.h>
+#elif defined(__SWITCH__)
+	// no Mumble (and no shared memory) on Switch
 #else
 	#include <sys/mman.h>
 	#include <fcntl.h> /* For O_* constants */
@@ -30,7 +32,9 @@ s16 sPrevCheckArea;
 
 void mumble_init(void) {
 
-#ifdef _WIN32
+#if defined(__SWITCH__)
+	return;
+#elif defined(_WIN32)
 	HANDLE hMapObject = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, L"MumbleLink");
 	if (hMapObject == NULL)
 		return;

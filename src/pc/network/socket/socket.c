@@ -139,6 +139,15 @@ static bool ns_socket_initialize(enum NetworkType networkType, UNUSED bool recon
     unsigned int port = (networkType == NT_CLIENT) ? configJoinPort : configHostPort;
     if (port == 0) { port = DEFAULT_PORT; }
 
+#ifdef TARGET_SWITCH
+    // The Switch build is offline only for now: hosting starts a local game
+    // without opening a socket, and joining is not available yet.
+    if (networkType == NT_CLIENT) { return false; }
+    sCurSocket = INVALID_SOCKET;
+    LOG_INFO("initialized (offline)");
+    return true;
+#endif
+
     // create a receiver socket to receive datagrams
     sCurSocket = socket_initialize();
     if (sCurSocket == INVALID_SOCKET) { return false; }
@@ -231,6 +240,7 @@ static bool ns_socket_match_addr(void* addr1, void* addr2) {
 
 static void ns_socket_update(void) {
     if (gNetworkType == NT_NONE) { return; }
+    if (sCurSocket == INVALID_SOCKET) { return; }
     do {
         // receive packet
         u8 data[PACKET_LENGTH + 1];
@@ -248,6 +258,8 @@ static int ns_socket_send(u8 localIndex, void* address, u8* data, u16 dataLength
         if (gNetworkType == NT_SERVER && gNetworkPlayers[localIndex].type != NPT_CLIENT) { return SOCKET_ERROR; }
         if (gNetworkType == NT_CLIENT && gNetworkPlayers[localIndex].type != NPT_SERVER) { return SOCKET_ERROR; }
     }
+
+    if (sCurSocket == INVALID_SOCKET) { return NO_ERROR; }
 
     struct sockaddr_in6* userAddr = &sAddr[localIndex];
     if (localIndex == 0 && address != NULL) { userAddr = (struct sockaddr_in6*)address; }

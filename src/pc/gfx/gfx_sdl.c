@@ -30,6 +30,10 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#ifdef __SWITCH__
+#include <switch.h>
+#endif
+
 #include "gfx_window_manager_api.h"
 #include "gfx_screen_config.h"
 #include "../pc_main.h"
@@ -110,9 +114,45 @@ static void gfx_sdl_reset_dimension_and_pos(void) {
     gfx_sdl_set_vsync(configWindow.vsync);
 }
 
+#ifdef __SWITCH__
+// The Switch outputs 1080p when docked and 720p in handheld mode,
+// the window has to follow whenever the console is docked or undocked.
+static bool sSwitchDocked = false;
+
+static void gfx_sdl_switch_get_resolution(int *w, int *h) {
+    sSwitchDocked = (appletGetOperationMode() == AppletOperationMode_Console);
+    *w = sSwitchDocked ? 1920 : 1280;
+    *h = sSwitchDocked ? 1080 : 720;
+}
+
+static void gfx_sdl_switch_update_resolution(void) {
+    bool docked = (appletGetOperationMode() == AppletOperationMode_Console);
+    if (docked == sSwitchDocked) { return; }
+    int w, h;
+    gfx_sdl_switch_get_resolution(&w, &h);
+    configWindow.w = w;
+    configWindow.h = h;
+    SDL_SetWindowSize(wnd, w, h);
+}
+#endif
+
 static void gfx_sdl_init(const char *window_title) {
 #if defined(_WIN32)
     SetProcessDPIAware();
+#endif
+
+#ifdef __SWITCH__
+    {
+        int w, h;
+        gfx_sdl_switch_get_resolution(&w, &h);
+        configWindow.x = 0;
+        configWindow.y = 0;
+        configWindow.w = w;
+        configWindow.h = h;
+        configWindow.fullscreen = false; // the window always covers the screen
+        configWindow.reset = false;
+        configWindow.msaa = 0;
+    }
 #endif
 
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
@@ -285,6 +325,12 @@ static void gfx_sdl_handle_events(void) {
                 break;
         }
     }
+
+#ifdef __SWITCH__
+    gfx_sdl_switch_update_resolution();
+    configWindow.fullscreen = false;
+    configWindow.reset = false;
+#endif
 
     if (configWindow.settings_changed) {
         gfx_sdl_set_fullscreen();

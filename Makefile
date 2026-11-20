@@ -36,6 +36,9 @@ TARGET_RPI ?= 0
 # Build and optimize for RK3588 processor
 TARGET_RK3588 ?= 0
 
+# Build for Nintendo Switch homebrew (requires devkitA64 + libnx, see docs/switch.md)
+TARGET_SWITCH ?= 0
+
 # Makeflag to enable OSX fixes
 OSX_BUILD ?= 0
 
@@ -129,6 +132,29 @@ ifeq ($(HOST_OS),Linux)
     #Rasberry Pi zero, 2, 3, etc
     TARGET_RPI = 1
   endif
+endif
+
+# Nintendo Switch overrides (always a cross build, whatever the host is)
+ifeq ($(TARGET_SWITCH),1)
+  ifeq ($(strip $(DEVKITPRO)),)
+    $(error TARGET_SWITCH=1 requires devkitPro. Please set DEVKITPRO in your environment, e.g. export DEVKITPRO=/opt/devkitpro)
+  endif
+  WINDOWS_BUILD := 0
+  OSX_BUILD := 0
+  TARGET_RPI := 0
+  TARGET_RK3588 := 0
+  DISCORD_SDK := 0
+  COOPNET := 0
+  UPDATER := 0
+  HANDHELD := 1
+  ICON := 0
+  USE_APP := 0
+  TARGET_BITS := 0
+  export PATH := $(DEVKITPRO)/devkitA64/bin:$(DEVKITPRO)/tools/bin:$(PATH)
+  CROSS := aarch64-none-elf-
+  LIBNX ?= $(DEVKITPRO)/libnx
+  PORTLIBS ?= $(DEVKITPRO)/portlibs/switch
+  NXARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 endif
 
 # MXE overrides
@@ -357,6 +383,10 @@ ifeq ($(TARGET_RK3588),1) # Define RK3588 to change SDL2 title & GLES2 hints
   DEFINES += USE_GLES=1
 endif
 
+ifeq ($(TARGET_SWITCH),1) # The Switch renders through mesa's GLES2
+  DEFINES += USE_GLES=1
+endif
+
 ifeq ($(OSX_BUILD),1) # Modify GFX & SDL2 for OSX GL
   DEFINES += OSX_BUILD=1
 endif
@@ -440,7 +470,11 @@ _ := $(shell $(PYTHON) $(TOOLS_DIR)/copy_extended_sounds.py)
 
 BUILD_DIR_BASE := build
 # BUILD_DIR is the location where all build artifacts are placed
-BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_pc
+ifeq ($(TARGET_SWITCH),1)
+  BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_nx
+else
+  BUILD_DIR := $(BUILD_DIR_BASE)/$(VERSION)_pc
+endif
 
 ifeq ($(WINDOWS_BUILD),1)
 	EXE := $(BUILD_DIR)/sm64coopdx.exe
@@ -454,6 +488,11 @@ endif
 
 ifeq ($(TARGET_RK3588),1)
   EXE := $(BUILD_DIR)/sm64coopdx.arm
+endif
+
+ifeq ($(TARGET_SWITCH),1)
+  EXE := $(BUILD_DIR)/sm64coopdx.elf
+  NRO := $(BUILD_DIR)/sm64coopdx.nro
 endif
 
 ELF            := $(BUILD_DIR)/$(TARGET).elf
@@ -729,6 +768,8 @@ else ifeq ($(TARGET_RPI),1)
   BACKEND_LDFLAGS += -lGLESv2
 else ifeq ($(TARGET_RK3588),1)
   BACKEND_LDFLAGS += -lGLESv2
+else ifeq ($(TARGET_SWITCH),1)
+  BACKEND_LDFLAGS += -lGLESv2
 else ifeq ($(OSX_BUILD),1)
   BACKEND_LDFLAGS += -framework OpenGL `pkg-config --libs glew` -mmacosx-version-min=$(MIN_MACOS_VERSION)
   EXTRA_CPP_FLAGS += -stdlib=libc++ -std=c++17 -mmacosx-version-min=$(MIN_MACOS_VERSION)
@@ -738,7 +779,11 @@ endif
 
 # SDL can be used by different systems, so we consolidate all of that shit into this
 
-SDLCONFIG := $(CROSS)sdl2-config
+ifeq ($(TARGET_SWITCH),1)
+  SDLCONFIG := $(PORTLIBS)/bin/sdl2-config
+else
+  SDLCONFIG := $(CROSS)sdl2-config
+endif
 BACKEND_CFLAGS += -DHAVE_SDL2=1
 
 ifeq ($(OSX_BUILD),1)
@@ -768,6 +813,10 @@ ifeq ($(WINDOWS_BUILD),1)
   ifeq ($(TARGET_BITS), 32)
     BACKEND_LDFLAGS += -ldbghelp
   endif
+else ifeq ($(TARGET_SWITCH),1)
+  NX_CFLAGS := $(NXARCH) -D__SWITCH__ -DTARGET_SWITCH -isystem $(LIBNX)/include -I$(PORTLIBS)/include -ftls-model=local-exec -ffunction-sections
+  CC_CHECK_CFLAGS := -fsyntax-only -fsigned-char $(NX_CFLAGS) $(BACKEND_CFLAGS) $(DEF_INC_CFLAGS) -Wall -Wextra $(TARGET_CFLAGS)
+  CFLAGS := $(OPT_FLAGS) $(NX_CFLAGS) $(DEF_INC_CFLAGS) $(BACKEND_CFLAGS) $(TARGET_CFLAGS) -fno-strict-aliasing -fwrapv
 else ifeq ($(TARGET_N64),0) # Linux / Other builds below
   CC_CHECK_CFLAGS := -fsyntax-only -fsigned-char $(BACKEND_CFLAGS) $(DEF_INC_CFLAGS) -Wall -Wextra $(TARGET_CFLAGS)
   CFLAGS := $(OPT_FLAGS) $(DEF_INC_CFLAGS) $(BACKEND_CFLAGS) $(TARGET_CFLAGS) -fno-strict-aliasing -fwrapv
@@ -808,6 +857,8 @@ ifeq ($(WINDOWS_BUILD),1)
     LDFLAGS += -no-pie
   endif
   LDFLAGS += -T windows.ld
+else ifeq ($(TARGET_SWITCH),1)
+  LDFLAGS := -specs=$(LIBNX)/switch.specs $(NXARCH) $(OPT_FLAGS) -L$(LIBNX)/lib -L$(PORTLIBS)/lib $(BACKEND_LDFLAGS) -lnx -lm
 else ifeq ($(TARGET_RPI),1)
   LDFLAGS := $(OPT_FLAGS) -lm $(BACKEND_LDFLAGS) -no-pie
 else ifeq ($(TARGET_RK3588),1)
@@ -819,7 +870,7 @@ else
 endif
 
 # used by crash handler and loading screen on linux
-ifeq ($(WINDOWS_BUILD),0)
+ifeq ($(WINDOWS_BUILD)$(TARGET_SWITCH),00)
   LDFLAGS += -rdynamic -ldl -pthread
 endif
 
@@ -858,7 +909,7 @@ LDFLAGS += -lz
 # Update checker library
 ifeq ($(WINDOWS_BUILD),1)
   LDFLAGS += -lwininet
-else
+else ifeq ($(TARGET_SWITCH),0)
   LDFLAGS += -lcurl
 endif
 
@@ -875,6 +926,9 @@ else ifeq ($(OSX_BUILD),1)
   else
     LDFLAGS += -L./lib/lua/mac_intel/ -l lua53
   endif
+else ifeq ($(TARGET_SWITCH),1)
+  # built from source by tools/switch/build_lua.sh
+  LDFLAGS += -Llib/lua/switch -l:liblua53.a
 else ifeq ($(TARGET_RPI),1)
 	ifneq (,$(findstring aarch64,$(machine)))
     LDFLAGS += -Llib/lua/linux -l:liblua53-arm64.a
@@ -950,7 +1004,7 @@ endif
 IS_DEV_OR_DEBUG := $(or $(filter 1,$(DEVELOPMENT)),$(filter 1,$(DEBUG)),0)
 ifeq ($(IS_DEV_OR_DEBUG),0)
   CFLAGS += -fno-ident -fno-common -ffile-prefix-map="$(PWD)"=. -D__DATE__="\"\"" -D__TIME__="\"\"" -Wno-builtin-macro-redefined
-  ifeq ($(OSX_BUILD),0)
+  ifeq ($(OSX_BUILD)$(TARGET_SWITCH),00)
     LDFLAGS += -Wl,--build-id=none
   endif
 else
@@ -967,7 +1021,7 @@ CFLAGS += -fPIE
 # Prevent a crash with -sopt
 export LANG := C
 
-ifeq ($(OSX_BUILD),0)
+ifeq ($(OSX_BUILD)$(TARGET_SWITCH),00)
   LDFLAGS += -latomic
 endif
 
@@ -1028,6 +1082,8 @@ ifeq ($(TARGET_RPI),1)
   CC_CHECK_CFLAGS += -DTARGET_RPI
   CFLAGS += -DTARGET_RPI
 endif
+
+# Check for switch option (-DTARGET_SWITCH is part of NX_CFLAGS)
 
 # Check for rk3588 option
 ifeq ($(TARGET_RK3588),1)
@@ -1119,6 +1175,29 @@ endef
 
 #all: $(ROM)
 all: $(EXE)
+
+ifeq ($(TARGET_SWITCH),1)
+  APP_TITLE   ?= sm64coopdx
+  APP_AUTHOR  ?= Coop Deluxe Team
+  APP_VERSION ?= $(shell sed -n 's/^\#define SM64COOPDX_VERSION "\(.*\)"/\1/p' src/pc/network/version.h)
+  APP_ICON    ?= res/icon_nx.jpg
+
+  LUA_NX_LIB := lib/lua/switch/liblua53.a
+
+  all: $(NRO)
+
+  $(LUA_NX_LIB):
+	@$(PRINT) "$(GREEN)Building Lua for Switch: $(BLUE)$@ $(NO_COL)\n"
+	$(V)sh tools/switch/build_lua.sh
+
+  $(EXE): $(LUA_NX_LIB)
+
+  $(NRO): $(EXE)
+	@$(PRINT) "$(GREEN)Packaging NRO: $(BLUE)$@ $(NO_COL)\n"
+	$(V)$(CROSS)strip -o $(BUILD_DIR)/sm64coopdx.stripped.elf $<
+	$(V)nacptool --create "$(APP_TITLE)" "$(APP_AUTHOR)" "$(APP_VERSION)" $(BUILD_DIR)/sm64coopdx.nacp
+	$(V)elf2nro $(BUILD_DIR)/sm64coopdx.stripped.elf $@ --nacp=$(BUILD_DIR)/sm64coopdx.nacp --icon=$(APP_ICON)
+endif
 
 ifeq ($(WINDOWS_BUILD),1)
 MAPFILE = $(BUILD_DIR)/coop.map
