@@ -155,6 +155,8 @@ ifeq ($(TARGET_SWITCH),1)
   LIBNX ?= $(DEVKITPRO)/libnx
   PORTLIBS ?= $(DEVKITPRO)/portlibs/switch
   NXARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
+  # newlib's <limits.h> does not define LLONG_MAX in C++ (luaconf.h needs it), <climits> does
+  EXTRA_CPP_FLAGS += -include climits
 endif
 
 # MXE overrides
