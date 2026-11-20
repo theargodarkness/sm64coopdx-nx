@@ -11,6 +11,26 @@ struct addrinfo *result, *i;
 
 char gGetHostName[MAX_CONFIG_STRING] = "";
 
+bool gSocketIPv4Only = false;
+
+// IPv4-mapped IPv6 address (::ffff:a.b.c.d) -> IPv4 address
+static void socket_addr_to_ipv4(const struct sockaddr_in6* addr6, struct sockaddr_in* addr4) {
+    memset(addr4, 0, sizeof(struct sockaddr_in));
+    addr4->sin_family = AF_INET;
+    addr4->sin_port = addr6->sin6_port;
+    memcpy(&addr4->sin_addr, &addr6->sin6_addr.s6_addr[12], sizeof(addr4->sin_addr));
+}
+
+// IPv4 address -> IPv4-mapped IPv6 address (::ffff:a.b.c.d)
+static void socket_addr_from_ipv4(const struct sockaddr_in* addr4, struct sockaddr_in6* addr6) {
+    memset(addr6, 0, sizeof(struct sockaddr_in6));
+    addr6->sin6_family = AF_INET6;
+    addr6->sin6_port = addr4->sin_port;
+    addr6->sin6_addr.s6_addr[10] = 0xff;
+    addr6->sin6_addr.s6_addr[11] = 0xff;
+    memcpy(&addr6->sin6_addr.s6_addr[12], &addr4->sin_addr, sizeof(addr4->sin_addr));
+}
+
 // Resolves a hostname to an IP address. Current limitation: It still only gets the first address it sees and returns.
 // getaddrinfo() is smart enough to prioritize IPv4 if the user is not in an IPv6 enabled network, so this shouldn't be a problem for now.
 // TODO: Store all found addresses somewhere and make the game try to connect to each of them if one fails.
@@ -81,6 +101,17 @@ void resolve_domain(struct sockaddr_in6 *addr) {
 }
 
 static int socket_bind(SOCKET socket, unsigned int port) {
+    if (gSocketIPv4Only) {
+        struct sockaddr_in rxAddr4;
+        memset(&rxAddr4, 0, sizeof(struct sockaddr_in));
+        rxAddr4.sin_family = AF_INET;
+        rxAddr4.sin_port = htons(port);
+        rxAddr4.sin_addr.s_addr = htonl(INADDR_ANY);
+        int rc4 = bind(socket, (SOCKADDR *)&rxAddr4, sizeof(rxAddr4));
+        if (rc4 != 0) { LOG_ERROR("bind failed with error %d", SOCKET_LAST_ERROR); }
+        return rc4;
+    }
+
     struct sockaddr_in6 rxAddr;
     // Clean struct to prevent rare cases of binding errors due to garbage data in that memory location. This just happened to me randomly on Windows and left me very confused.
     memset(&rxAddr, 0, sizeof(struct sockaddr_in6));
@@ -99,7 +130,14 @@ static int socket_bind(SOCKET socket, unsigned int port) {
 
 static int socket_send(SOCKET socket, struct sockaddr_in6* addr, u8* buffer, u16 bufferLength) {
     int addrSize = sizeof(struct sockaddr_in6);
-    int rc = sendto(socket, (char*)buffer, bufferLength, 0, (struct sockaddr*)addr, addrSize);
+    int rc;
+    if (gSocketIPv4Only) {
+        struct sockaddr_in addr4;
+        socket_addr_to_ipv4(addr, &addr4);
+        rc = sendto(socket, (char*)buffer, bufferLength, 0, (struct sockaddr*)&addr4, sizeof(addr4));
+    } else {
+        rc = sendto(socket, (char*)buffer, bufferLength, 0, (struct sockaddr*)addr, addrSize);
+    }
     if (rc != SOCKET_ERROR) { return NO_ERROR; }
 
     int error = SOCKET_LAST_ERROR;
@@ -113,7 +151,16 @@ static int socket_receive(SOCKET socket, struct sockaddr_in6* rxAddr, u8* buffer
     *receiveLength = 0;
 
     RX_ADDR_SIZE_TYPE rxAddrSize = sizeof(struct sockaddr_in6);
-    int rc = recvfrom(socket, (char*)buffer, bufferLength, 0, (struct sockaddr*)rxAddr, &rxAddrSize);
+    int rc;
+    if (gSocketIPv4Only) {
+        struct sockaddr_in rxAddr4;
+        memset(&rxAddr4, 0, sizeof(rxAddr4));
+        rxAddrSize = sizeof(rxAddr4);
+        rc = recvfrom(socket, (char*)buffer, bufferLength, 0, (struct sockaddr*)&rxAddr4, &rxAddrSize);
+        if (rc != SOCKET_ERROR) { socket_addr_from_ipv4(&rxAddr4, rxAddr); }
+    } else {
+        rc = recvfrom(socket, (char*)buffer, bufferLength, 0, (struct sockaddr*)rxAddr, &rxAddrSize);
+    }
 
     for (int i = 1; i < MAX_PLAYERS; i++) {
         if (memcmp(rxAddr, &sAddr[i], sizeof(struct sockaddr_in6)) == 0) {
