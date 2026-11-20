@@ -69,7 +69,7 @@
 #endif
 
 #ifdef __SWITCH__
-#include <switch.h>
+#include "pc/nx.h"
 #endif
 
 #include <SDL2/SDL.h>

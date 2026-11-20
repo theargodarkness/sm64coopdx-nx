@@ -31,7 +31,7 @@
 #include <unistd.h>
 
 #ifdef __SWITCH__
-#include <switch.h>
+#include "pc/nx.h"
 #endif
 
 #include "gfx_window_manager_api.h"

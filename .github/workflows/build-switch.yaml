@@ -27,7 +27,7 @@ jobs:
                 dkp-pacman -Q | grep -E "^(libnx|switch-sdl2|switch-mesa|switch-zlib|devkitA64) " || true
 
             - name: Build the game
-              run: make TARGET_SWITCH=1 -j$(nproc)
+              run: make TARGET_SWITCH=1 -k -j$(nproc)
 
             - name: Package for the SD card
               run: |

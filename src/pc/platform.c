@@ -298,7 +298,7 @@ static void sys_fatal_impl(const char *msg) {
 
 #ifdef __SWITCH__
 #include <sys/stat.h>
-#include <switch.h>
+#include "pc/nx.h"
 
 // libnx keeps the launch arguments around, argv[0] is the path of the NRO
 extern int __system_argc;
